@@ -5,6 +5,9 @@ from test_function import ReLTanh
 from torchvision import datasets
 import torchvision.transforms as transforms
 
+# for reproducibility
+SEED = 42
+
 # number of subprocesses to use for data loading
 num_workers = 0
 # how many samples per batch to load
@@ -19,40 +22,52 @@ train_data = datasets.MNIST(root='data', train=True,
 test_data = datasets.MNIST(root='data', train=False,
                                   download=True, transform=transform)
 
+# split for validation
+train_data, valid_data = torch.utils.data.random_split(train_data, [50000, 10000],
+    generator=torch.Generator().manual_seed(SEED))
+
+print(f"There are {len(train_data)} examples in train set.")
+print(f"There are {len(valid_data)} examples in valid set.")
+print(f"There are {len(test_data)} examples in test set.")
+
 # prepare data loaders
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size,
     num_workers=num_workers)
-test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, 
+test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size,
     num_workers=num_workers)
 
 import torch.nn as nn
 import torch.nn.functional as F
 
 ## Define the NN architecture
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.fc1 = nn.Linear(28 * 28, 128)
-        # linear layer (n_hidden -> hidden_2)
-        #self.fc2 = nn.Linear(512, 512)
-        # linear layer (n_hidden -> 10)
-        self.fc3 = nn.Linear(128, 10)
-        
-        #activation functions
-        self.a1 = ReLTanh(128)
-        self.a2 = ReLTanh(10)
-        
+class FCNN(nn.Module):
+    def __init__(self, input_dims=28*28, output_dims=10):
+        super(FCNN, self).__init__()
+
+        hidden_dims = 128
+
+        # initialize layers
+        self.fc1 = nn.Linear(input_dims, hidden_dims)
+        self.out = nn.Linear(hidden_dims, output_dims)
+
+        # activation functions
+        self.nl1 = ReLTanh()
+        self.act = nn.Softmax(dim=output_dims)
 
     def forward(self, x):
-        # flatten image input
-        x = x.view(-1, 28 * 28)
-        # add hidden layer, with relu activation function
-        x = self.a1(self.fc1(x))
-        x = self.a2(self.fc3(x))
+        x = x.view(-1, 28 * 28)  # [bn, 28, 28] -> [bn, 768]
+        x = self.fc1(x)          # [bn, 768] -> [bn, 128]
+        x = self.nl1(x)          # [bn, 128] -> [bn, 128]
+        x = self.out(x)          # [bn, 128] -> [bn, 10]
         return x
 
+    def classify(self, x):
+        x = self(x)
+        x = self.act(x)
+        return torch.argmax(x, dim=1)
+
 # initialize the NN
-model = Net()
+model = FCNN()
 print(model)
 
 ## Specify loss and optimization functions
@@ -61,8 +76,7 @@ print(model)
 criterion = nn.CrossEntropyLoss()
 
 # specify optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-
+optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 
 # number of epochs to train the model
 n_epochs = 30  # suggest training between 20-50 epochs
@@ -72,7 +86,7 @@ model.train() # prep model for training
 for epoch in range(n_epochs):
     # monitor training loss
     train_loss = 0.0
-    
+
     ###################
     # train the model #
     ###################
@@ -89,17 +103,19 @@ for epoch in range(n_epochs):
         optimizer.step()
         # update running training loss
         train_loss += loss.item()*data.size(0)
-        
-        
-    # print training statistics 
+
+
+    # print training statistics
     # calculate average loss over an epoch
     train_loss = train_loss/len(train_loader.dataset)
 
     print('Epoch: {} \tTraining Loss: {:.6f}'.format(
-        epoch+1, 
+        epoch+1,
         train_loss
         ))
-    
+
+raise Exception
+
 # initialize lists to monitor test loss and accuracy
 test_loss = 0.0
 class_correct = list(0. for i in range(10))
@@ -112,7 +128,7 @@ for data, target in test_loader:
     output = model(data)
     # calculate the loss
     loss = criterion(output, target)
-    # update test loss 
+    # update test loss
     test_loss += loss.item()*data.size(0)
     # convert output probabilities to predicted class
     _, pred = torch.max(output, 1)

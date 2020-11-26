@@ -16,61 +16,53 @@ from torchvision import datasets, transforms # import transformations to use for
 
 class ReLTanh(nn.Module):
     '''
-    Implementation of soft exponential activation.
+    Implementation of ReLTanh activation.
     Shape:
         - Input: (N, *) where * means, any number of additional
           dimensions
         - Output: (N, *), same shape as the input
     Parameters:
-        - alpha - trainable parameter
+        - alpha - constant parameter
+        - beta - constant parameter
     References:
         - See related paper:
-        https://arxiv.org/pdf/1602.01321.pdf
+        https://www.sciencedirect.com/science/article/pii/S0925231219309464
     Examples:
-        >>> a1 = soft_exponential(256)
+        >>> a1 = ReLTanh(0, -1.5)
         >>> x = torch.randn(256)
         >>> x = a1(x)
     '''
-    def __init__(self, in_features, alpha = None, beta = None):
-        '''
-        Initialization.
-        INPUT:
-            - in_features: shape of the input
-            - aplha: trainable parameter
-            aplha is initialized with zero value by default
-        '''
-        super(ReLTanh,self).__init__()
-        self.in_features = in_features
+    def __init__(self, alpha=0.0, beta=-1.5):
+        super(ReLTanh, self).__init__()
 
-        # initialize alpha
-        if alpha == None:
-            self.alpha = Parameter(torch.tensor(0.0)) # create a tensor out of alpha
-        else:
-            self.alpha = Parameter(torch.tensor(alpha)) # create a tensor out of alpha
-            
-        if beta == None:
-            self.beta = Parameter(torch.tensor(-1.5))
-        else:
-            self.beta = Parameter(torch.tensor(beta))
-                
-            
-        self.alpha.requiresGrad = True # set requiresGrad to true!
-        self.beta.requiresGrad = True 
+        assert alpha > beta
+
+        self.alpha = torch.FloatTensor([alpha])
+        self.beta = torch.FloatTensor([beta])
+
+        # Set up constant boundary values
+        self.alpha_tanh = torch.tanh(self.alpha)
+        self.beta_tanh = torch.tanh(self.beta)
+        self.alpha_tanh_d1 = torch.ones([1]).sub(torch.square(self.alpha_tanh))
+        self.beta_tanh_d1 = torch.ones([1]).sub(torch.square(self.beta_tanh))
 
     def forward(self, x):
         '''
         Forward pass of the function.
         Applies the function to the input elementwise.
         '''
-        for i in range(len(x)):
-            for j in range(len(x[0])):
-                if x[i][j] > self.beta and x[i][j] < self.alpha:
-                    x[i][j] = torch.tanh(x[i][j])
-                    
-                elif x[i][j]>= self.alpha:
-                    x[i][j] = (1-torch.tanh(self.alpha)**2)*(x[i][j]-self.alpha)+torch.tanh(self.alpha)
-                elif x[i][j]<= self.beta:
-                    x[i][j] = (1-torch.tanh(self.beta)**2)*(x[i][j]-self.beta)+torch.tanh(self.beta)
-                else:
-                    print('Error: ReLTanh',x[i][j])
+
+        # compute masks to relax indifferentiability
+        alpha_mask = x.ge(self.alpha)
+        beta_mask = x.le(self.beta)
+        act_mask = ~(alpha_mask | beta_mask)
+
+        # activations
+        x_alpha = x.sub(self.alpha).mul(self.alpha_tanh_d1).add(self.alpha)
+        x_beta = x.sub(self.beta).mul(self.beta_tanh_d1).add(self.beta)
+        x_act = torch.tanh(x)
+
+        # combine activations
+        x = x_alpha.mul(alpha_mask) + x_beta.mul(beta_mask) + x_act.mul(act_mask)
+
         return x

@@ -25,9 +25,11 @@ def derivative_ReLTanh(x, alpha, beta):
         if x[i] > beta and x[i] < alpha:
             x[i] = 1-np.tanh(x[i])**2
         elif x[i]>= alpha:
-            x[i] = (1-np.tanh(alpha)**2)
+            #x[i] = (1-np.tanh(alpha)**2)
+            x[i] = ddtanh(alpha)
         elif x[i]<= beta:
-            x[i] = (1-np.tanh(beta)**2)
+            #x[i] = (1-np.tanh(beta)**2)
+            x[i] = ddtanh(beta)
         else:
             print('Error: ReLTanh',x[i])
     return x

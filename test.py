@@ -280,6 +280,9 @@ if __name__ == '__main__':
         args.model_name = (args.activation_function_type + '_' +
                            str(args.hidden_layers) + 'l_' +
                            str(args.epochs) + 'e')
+        if args.activation_function_type == "reltanh":
+            args.model_name += ('_a_' + str(args.reltanh_alpha) +
+                                '_b_' + str(args.reltanh_beta))
 
     # seed for consistency in model weights
     torch.manual_seed(args.init_seed)

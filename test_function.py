@@ -37,29 +37,40 @@ class ReLTanh(nn.Module):
 
         assert alpha > beta
 
-        self.alpha = torch.FloatTensor([alpha])
-        self.beta = torch.FloatTensor([beta])
+        self.alpha = alpha
+        self.beta = beta
+        self.alpha_t = torch.FloatTensor([self.alpha])
+        self.beta_t = torch.FloatTensor([self.beta])
 
         # Set up constant boundary values
-        self.alpha_tanh = torch.tanh(self.alpha)
-        self.beta_tanh = torch.tanh(self.beta)
+        self.alpha_tanh = torch.tanh(self.alpha_t)
+        self.beta_tanh = torch.tanh(self.beta_t)
         self.alpha_tanh_d1 = torch.ones([1]).sub(torch.square(self.alpha_tanh))
         self.beta_tanh_d1 = torch.ones([1]).sub(torch.square(self.beta_tanh))
+
+    def __repr__(self):
+        return f"ReLTanh(alpha={self.alpha}, beta={self.beta})"
 
     def forward(self, x):
         '''
         Forward pass of the function.
         Applies the function to the input elementwise.
         '''
+        # move variables to correct device
+        device = x.device
+        self.alpha_t = self.alpha_t.to(device)
+        self.beta_t = self.beta_t.to(device)
+        self.alpha_tanh_d1 = self.alpha_tanh_d1.to(device)
+        self.beta_tanh_d1 = self.beta_tanh_d1.to(device)
 
         # compute masks to relax indifferentiability
-        alpha_mask = x.ge(self.alpha)
-        beta_mask = x.le(self.beta)
+        alpha_mask = x.ge(self.alpha_t)
+        beta_mask = x.le(self.beta_t)
         act_mask = ~(alpha_mask | beta_mask)
 
         # activations
-        x_alpha = x.sub(self.alpha).mul(self.alpha_tanh_d1).add(self.alpha)
-        x_beta = x.sub(self.beta).mul(self.beta_tanh_d1).add(self.beta)
+        x_alpha = x.sub(self.alpha_t).mul(self.alpha_tanh_d1).add(self.alpha_t)
+        x_beta = x.sub(self.beta_t).mul(self.beta_tanh_d1).add(self.beta_t)
         x_act = torch.tanh(x)
 
         # combine activations

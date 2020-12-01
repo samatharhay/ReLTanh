@@ -1,124 +1,53 @@
-import torch
+import argparse
+
+from os import path, makedirs
+
 import numpy as np
-from test_function import ReLTanh
 import pandas as pd
-
-from torchvision import datasets
-import torchvision.transforms as transforms
-
-# for reproducibility
-SEED = 42
-
-# number of subprocesses to use for data loading
-num_workers = 0
-# how many samples per batch to load
-batch_size = 20
-
-# convert data to torch.FloatTensor
-transform = transforms.ToTensor()
-
-# choose the training and test datasets
-train_data = datasets.MNIST(root='data', train=True,
-                                   download=True, transform=transform)
-test_data = datasets.MNIST(root='data', train=False,
-                                  download=True, transform=transform)
-
-# split for validation
-train_data, valid_data = torch.utils.data.random_split(train_data, [50000, 10000],
-    generator=torch.Generator().manual_seed(SEED))
-
-print(f"There are {len(train_data)} examples in train set.")
-print(f"There are {len(valid_data)} examples in valid set.")
-print(f"There are {len(test_data)} examples in test set.")
-
-# prepare data loaders
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size,
-    num_workers=num_workers)
-test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size,
-    num_workers=num_workers)
-valid_loader = torch.utils.data.DataLoader(valid_data, batch_size=batch_size,
-    num_workers=num_workers)
-
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.tensorboard as tb
+import torchvision.transforms as transforms
 
-##################File naming process reassign###############
+from torchvision import datasets
+from tqdm import tqdm
 
-function_name = 'ReLTanh'
-n_hidden_Layers = 6
-
-##############################################################
+from test_function import ReLTanh
 
 
 ## Define the NN architecture
 class FCNN(nn.Module):
-    def __init__(self, input_dims=28*28, output_dims=10):
+    def __init__(self, args, input_dims=28*28, output_dims=10,
+                 hidden_dims=128, hidden_layers=5):
         super(FCNN, self).__init__()
 
-        hidden_dims = 128
+        # construct layers
+        in_dims = input_dims
+        self.layers = []
+        for _ in range(hidden_layers):
+            self.layers.append(nn.Linear(in_dims, hidden_dims))
+            self.layers.append(self.act_fn_layer(args))
+            in_dims = hidden_dims
+        self.model = nn.Sequential(*self.layers)
+        self.out = nn.Linear(in_dims, output_dims)
 
-        # initialize layers
-        self.fc1 = nn.Linear(input_dims, hidden_dims)
-        self.fc2 = nn.Linear(hidden_dims, hidden_dims)
-        self.fc3 = nn.Linear(hidden_dims, hidden_dims)
-        self.fc4 = nn.Linear(hidden_dims, hidden_dims)
-        self.fc5 = nn.Linear(hidden_dims, hidden_dims)
-        
-        self.fc6 = nn.Linear(hidden_dims, hidden_dims)
-        '''
-        self.fc7 = nn.Linear(hidden_dims, hidden_dims)
-        
-        self.fc8 = nn.Linear(hidden_dims, hidden_dims)
-        
-        self.fc9 = nn.Linear(hidden_dims, hidden_dims)
-        self.fc10 = nn.Linear(hidden_dims, hidden_dims)
-        '''
-        self.out = nn.Linear(hidden_dims, output_dims)
-
-        # activation functions
-        
-        self.nl1 = ReLTanh()
-        self.nl2 = ReLTanh()
-        self.nl3 = ReLTanh()
-        self.nl4 = ReLTanh()
-        self.nl5 = ReLTanh()
-        self.nl6 = ReLTanh()
-        '''
-        self.nl7 = ReLTanh()
-        
-        self.nl8 = ReLTanh()
-        
-        self.nl9 = ReLTanh()
-        self.nl10 = ReLTanh()
-        '''
+        # activation for evaluation
         self.act = nn.Softmax(dim=output_dims)
+
+    def act_fn_layer(self, args):
+        if args.activation_function_type == 'reltanh':
+            return ReLTanh(args.reltanh_alpha, args.reltanh_beta)
+        elif args.activation_function_type == 'relu':
+            return nn.ReLU()
+        elif args.activation_function_type == 'tanh':
+            return nn.Tanh()
+        else:
+            raise NotImplementedError(f'Did not implement activation function: {act_fn_name}')
 
     def forward(self, x):
         x = x.view(-1, 28 * 28)  # [bn, 28, 28] -> [bn, 768]
-        x = self.fc1(x)          # [bn, 768] -> [bn, 128]
-        x = self.nl1(x)         # [bn, 128] -> [bn, 128]
-        x = self.fc2(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl2(x)         # [bn, 128] -> [bn, 128]
-        x = self.fc3(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl3(x)          # [bn, 128] -> [bn, 128]
-        x = self.fc4(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl4(x)          # [bn, 128] -> [bn, 128]
-        x = self.fc5(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl5(x)          # [bn, 128] -> [bn, 128]
-        x = self.fc6(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl6(x)          # [bn, 128] -> [bn, 128]
-        '''
-        x = self.fc7(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl7(x)          # [bn, 128] -> [bn, 128]
-        
-        x = self.fc8(x)          # [bn, 128] -> [bn, 128]
-        x = F.relu(x)          # [bn, 128] -> [bn, 128]
-        
-        x = self.fc9(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl9(x)          # [bn, 128] -> [bn, 128]
-        x = self.fc10(x)          # [bn, 128] -> [bn, 128]
-        x = self.nl10(x)          # [bn, 128] -> [bn, 128]
-        '''
+        x = self.model(x)        # [bn, 768] -> [bn, 128]
         x = self.out(x)          # [bn, 128] -> [bn, 10]
         return x
 
@@ -127,139 +56,269 @@ class FCNN(nn.Module):
         x = self.act(x)
         return torch.argmax(x, dim=1)
 
-# initialize the NN
-model = FCNN()
-print(model)
 
-## Specify loss and optimization functions
+## Training loop
+def train(model, transform, device, args):
+    # construct data
+    train_data = datasets.MNIST(root='data', train=True,
+                                       download=True, transform=transform)
+    train_data, valid_data = torch.utils.data.random_split(train_data, [50000, 10000],
+        generator=torch.Generator().manual_seed(args.split_seed))
 
-# specify loss function
-criterion = nn.CrossEntropyLoss()
+    # prepare data loaders
+    train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size,
+        num_workers=args.num_workers)
+    valid_loader = torch.utils.data.DataLoader(valid_data, batch_size=args.batch_size,
+        num_workers=args.num_workers)
 
-# specify optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+    # configurations
+    criterion = nn.CrossEntropyLoss()
+    n_epochs = args.epochs
+    optimizer = None
+    if args.optimizer == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(),
+                                    lr=args.learning_rate,
+                                    momentum=args.momentum)
+    elif args.optimizer == "adam":
+        optimizer = torch.optim.Adam(model.parameters(),
+                                     lr=args.learning_rate)
+    else:
+        raise NotImplementedError(f"Not implemented optimizer type: {args.optim}")
 
-# number of epochs to train the model
-n_epochs = 100  # suggest training between 20-50 epochs
+    # move model to correct device
+    model = model.to(device)
 
-filename = str(function_name)+'_'+str(n_hidden_Layers)+'h_'+str(n_epochs)+'e.csv'
-print(filename)
+    print("----------- training -----------")
+    print("==== CONFIG ====")
+    print(args)
+    print(f"There are {len(train_data)} examples in train set.")
+    print(f"There are {len(valid_data)} examples in valid set.")
+    print("==== OPTIMIZER ====")
+    print(optimizer)
+    print("==== MODEL ====")
+    print(model)
 
-training_accuracy = np.empty(n_epochs+1)
-training_loss = np.empty(n_epochs)
+    # TODO: implement continue training if necessary
+
+    # initialize tensorboard writers
+    global_step = 0
+    train_logger = tb.SummaryWriter(path.join(args.log_dir, args.model_name, 'train'), flush_secs=1)
+    valid_logger = tb.SummaryWriter(path.join(args.log_dir, args.model_name, 'valid'), flush_secs=1)
+    train_losses, train_accs, valid_losses, valid_accs = [], [], [], []
+
+    # evaluate 0th step
+    loss, acc, _ = evaluate(model, valid_loader, device)
+    valid_losses.append(loss)
+    valid_accs.append(acc)
+    valid_logger.add_scalar('loss', loss, 0)     # log eval loss to tensorboard
+    valid_logger.add_scalar('accuracy', acc, 0)  # log eval accuracy to tensorboard
+
+    for epoch in range(n_epochs):
+        # monitor training loss
+        model.train() # prep model for training
+        train_loss = []
+
+        ###################
+        # train the model #
+        ###################
+        for data, target in tqdm(train_loader):
+            # move data to device
+            data, target = data.to(device), target.to(device)
+            # clear the gradients of all optimized variables
+            optimizer.zero_grad()
+            # forward pass: compute predicted outputs by passing inputs to the model
+            output = model(data)
+            # calculate the loss
+            loss = criterion(output, target)
+            # backward pass: compute gradient of the loss with respect to model parameters
+            loss.backward()
+            # perform a single optimization step (parameter update)
+            optimizer.step()
+            # update running training loss
+            train_loss.append(loss.detach().cpu().numpy())
+            # update tensorboard
+            train_logger.add_scalar('loss_per_step', loss, global_step)
+            global_step += 1
+
+        # print training statistics
+        # calculate average loss over an epoch
+        train_loss = sum(train_loss) / len(train_loss)
+
+        print('Epoch: {}\tStep: {}\tTraining Loss: {:.6f}'.format(
+            epoch+1,
+            global_step,
+            train_loss
+            ))
+
+        # training evaluation
+        _, acc, _ = evaluate(model, train_loader, device, "training")
+        train_logger.add_scalar('loss', train_loss, epoch + 1)
+        train_logger.add_scalar('accuracy', acc, epoch + 1)
+        train_losses.append(train_loss)
+        train_accs.append(acc)
+
+        # validation evaluation
+        loss, acc, _ = evaluate(model, valid_loader, device)
+        valid_logger.add_scalar('loss', loss, epoch + 1)
+        valid_logger.add_scalar('accuracy', acc, epoch + 1)
+        valid_losses.append(loss)
+        valid_accs.append(acc)
+
+    # save model
+    model_path = path.join(args.model_dir, args.model_name)
+    makedirs(model_path, exist_ok=True)
+    torch.save(model.state_dict(), path.join(model_path, "model.pt"))
+    torch.save(optimizer.state_dict(), path.join(model_path, "optimizer.pt"))
+    print(f"==== Training Completed ====\nSaved model and optimizer to {model_path}")
+
+    return model, train_losses, train_accs, valid_losses, valid_accs
 
 
-def evaluate_epoch(epoch):
-    test_loss = 0.0
+## Evaluation loop
+def evaluate(model, data_loader, device, eval_type="validation"):
+    # configurations
+    criterion = nn.CrossEntropyLoss()
+
+    accumulated_loss = 0.0
     class_correct = list(0. for i in range(10))
     class_total = list(0. for i in range(10))
-    
+
+    model = model.to(device)
     model.eval()
-    
-    for data, target in valid_loader:
-        # forward pass: compute predicted outputs by passing inputs to the model
-        output = model(data)
-        _, pred = torch.max(output, 1)
-        # compare predictions to true label
-        correct = np.squeeze(pred.eq(target.data.view_as(pred)))
-        # calculate test accuracy for each object class
-        for i in range(batch_size):
-            label = target.data[i]
-            class_correct[label] += correct[i].item()
-            class_total[label] += 1
 
-    print('Validation Accuracy (Overall): %2d%% (%2d/%2d)' % (
-        100. * np.sum(class_correct) / np.sum(class_total),
-        np.sum(class_correct), np.sum(class_total)))
-    training_accuracy[epoch+1] = 100 * np.sum(class_correct) / np.sum(class_total)
-
-
-#0 epochs
-evaluate_epoch(-1)
-
-for epoch in range(n_epochs):
-    # monitor training loss
-    model.train() # prep model for training
-    train_loss = 0.0
-
-    ###################
-    # train the model #
-    ###################
-    for data, target in train_loader:
-        # clear the gradients of all optimized variables
-        optimizer.zero_grad()
+    for data, target in tqdm(data_loader):
+        # move data to device
+        data, target = data.to(device), target.to(device)
         # forward pass: compute predicted outputs by passing inputs to the model
         output = model(data)
         # calculate the loss
         loss = criterion(output, target)
-        # backward pass: compute gradient of the loss with respect to model parameters
-        loss.backward()
-        # perform a single optimization step (parameter update)
-        optimizer.step()
-        # update running training loss
-        train_loss += loss.item()*data.size(0)
+        # update loss
+        accumulated_loss += loss.detach().cpu().numpy()
+        # convert output probabilities to predicted class
+        _, pred = torch.max(output, 1)
+        # compare predictions to true label
+        correct = np.squeeze(pred.eq(target.data.view_as(pred)))
+        # calculate test accuracy for each object class
+        for i in range(target.shape[0]):
+            label = target.data[i]
+            class_correct[label] += correct[i].item()
+            class_total[label] += 1
+
+    accuracy = 100. * np.sum(class_correct) / np.sum(class_total)
+    print(f'{eval_type} accuracy (overall): %2d%% (%2d/%2d)' % (
+        accuracy,
+        np.sum(class_correct), np.sum(class_total)))
+
+    class_accuracy = np.array(class_correct) / np.array(class_total)
+    print(f'{eval_type} accuracy (per class): {[round(acc, 2) for acc in class_accuracy]}')
+
+    # TODO: If necessary for evaluation,
+    # add precision, recall, F1, and confusion matrix
+
+    return loss, accuracy, class_accuracy
 
 
-    # print training statistics
-    # calculate average loss over an epoch
-    train_loss = train_loss/len(train_loader.dataset)
+## Test evaluation call
+def evaluate_test(model, transform, device, args):
+    print("----------- testing -----------")
 
-    print('Epoch: {} \tTraining Loss: {:.6f}'.format(
-        epoch+1,
-        train_loss
-        ))
-    evaluate_epoch(epoch)
-    training_loss[epoch] = train_loss
+    # prepare data
+    test_data = datasets.MNIST(root='data', train=False,
+                                      download=True, transform=transform)
+    test_loader = torch.utils.data.DataLoader(test_data, batch_size=args.batch_size,
+        num_workers=args.num_workers)
+    print(f"There are {len(test_data)} examples in test set.")
 
-#raise Exception
-
-# initialize lists to monitor test loss and accuracy
-test_loss = 0.0
-class_correct = list(0. for i in range(10))
-class_total = list(0. for i in range(10))
-
-model.eval() # prep model for *evaluation*
+    # run evaluations
+    return evaluate(model, test_loader, device, "test")
 
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--hidden_dims', type=int, default=128,
+                        help="hidden dimensions per layer")
+    parser.add_argument('-l', '--hidden_layers', type=int, default=5,
+                        help="number of hidden layers")
+    parser.add_argument('-a', '--activation_function_type', type=str, default="reltanh",
+                        choices=["reltanh", "relu", "tanh"],
+                        help="type of activation function after each hidden layer")
+    parser.add_argument('--reltanh_alpha', type=float, default=0.0,
+                        help="positive boundary for reltanh")
+    parser.add_argument('--reltanh_beta', type=float, default=-1.5,
+                        help="negative boundary for reltanh")
+    parser.add_argument('--split_seed', type=int, default=42,
+                        help="rng seed for train and valid split")
+    parser.add_argument('--init_seed', type=int, default=42,
+                        help="rng seed for model weight initializations")
+    parser.add_argument('--num_workers', type=int, default=0,
+                        help="threads for reading and processing data")
+    parser.add_argument('-b', '--batch_size', type=int, default=64,
+                        help="dataloader batch size")
+    parser.add_argument('-o', '--optimizer', type=str, default="sgd", choices=["sgd", "adam"],
+                        help="optimizer for training")
+    parser.add_argument('-lr', '--learning_rate', type=float, default=1e-3,
+                        help="optimizer learning rate")
+    parser.add_argument('--momentum', type=float, default=0.0,
+                        help="optimizer momentum if applicable")
+    parser.add_argument('-e', '--epochs', type=int, default=100,
+                        help="training epochs")
+    parser.add_argument('--log_dir', type=str, default='logs',
+                        help="logging save directory")
+    parser.add_argument('--model_dir', type=str, default='models',
+                        help="models save directory")
+    parser.add_argument('--model_name', type=str, default=None,
+                        help="model name, initialized if not given")
+    parser.add_argument('--cuda', action='store_true',
+                        help="run training on a GPU")
+    parser.add_argument('--run_test', action='store_true',
+                        help="run test on testing set after training")
+    args = parser.parse_args()
 
-for data, target in test_loader:
-    # forward pass: compute predicted outputs by passing inputs to the model
-    output = model(data)
-    # calculate the loss
-    loss = criterion(output, target)
-    # update test loss
-    test_loss += loss.item()*data.size(0)
-    # convert output probabilities to predicted class
-    _, pred = torch.max(output, 1)
-    # compare predictions to true label
-    correct = np.squeeze(pred.eq(target.data.view_as(pred)))
-    # calculate test accuracy for each object class
-    for i in range(batch_size):
-        label = target.data[i]
-        class_correct[label] += correct[i].item()
-        class_total[label] += 1
+    # set up model name
+    if args.model_name == None:
+        args.model_name = (args.activation_function_type + '_' +
+                           str(args.hidden_layers) + 'l_' +
+                           str(args.epochs) + 'e')
 
-# calculate and print avg test loss
-test_loss = test_loss/len(test_loader.dataset)
-print('Test Loss: {:.6f}\n'.format(test_loss))
+    # seed for consistency in model weights
+    torch.manual_seed(args.init_seed)
 
-for i in range(10):
-    if class_total[i] > 0:
-        print('Test Accuracy of %5s: %2d%% (%2d/%2d)' % (
-            str(i), 100 * class_correct[i] / class_total[i],
-            np.sum(class_correct[i]), np.sum(class_total[i])))
-    else:
-        print('Test Accuracy of %5s: N/A (no training examples)' % (classes[i]))
+    # check if CUDA is available
+    device = torch.device("cpu")
+    if args.cuda:
+        if torch.cuda.is_available():
+            print("Using GPU with CUDA")
+            torch.cuda.manual_seed_all(args.init_seed)
+            device = torch.device("cuda")
+        else:
+            print("Training on CPU because CUDA is not available. Please install it "
+                  "if you wish to train this model on a GPU.")
+            args.cuda = False
 
-print('\nTest Accuracy (Overall): %2d%% (%2d/%2d)' % (
-    100. * np.sum(class_correct) / np.sum(class_total),
-    np.sum(class_correct), np.sum(class_total)))
+    # TODO: set up better transforms if necessary
+    transform = transforms.ToTensor()
 
+    # create and train model
+    model = FCNN(args,
+                 hidden_dims=args.hidden_dims,
+                 hidden_layers=args.hidden_layers)
+    model, train_losses, train_accs, valid_losses, valid_accs = train(model, transform, device, args)
 
+    # print training logs to file
+    loss_dir = path.join(args.log_dir, args.model_name, "loss")
+    accuracy_dir = path.join(args.log_dir, args.model_name, "accuracy")
+    makedirs(loss_dir, exist_ok=True)
+    makedirs(accuracy_dir, exist_ok=True)
+    pd.DataFrame(train_losses).to_csv(path.join(loss_dir, "train.csv"),
+                                      header=False, index=False)
+    pd.DataFrame(valid_losses).to_csv(path.join(loss_dir, "valid.csv"),
+                                      header=False, index=False)
+    pd.DataFrame(train_accs).to_csv(path.join(accuracy_dir, "train.csv"),
+                                    header=False, index=False)
+    pd.DataFrame(valid_accs).to_csv(path.join(accuracy_dir, "valid.csv"),
+                                    header=False, index=False)
 
-
-##print to file
-pd.DataFrame(training_accuracy).to_csv("accuracy/"+filename,header=False,index=False)
-pd.DataFrame(training_loss).to_csv("loss/"+filename,header=False,index=False)
-
-
+    # evaluate test set
+    if args.run_test:
+        _ = evaluate_test(model, transform, device, args)

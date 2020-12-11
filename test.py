@@ -13,48 +13,7 @@ import torchvision.transforms as transforms
 from torchvision import datasets
 from tqdm import tqdm
 
-from test_function import ReLTanh
-
-
-## Define the NN architecture
-class FCNN(nn.Module):
-    def __init__(self, args, input_dims=28*28, output_dims=10,
-                 hidden_dims=128, hidden_layers=5):
-        super(FCNN, self).__init__()
-
-        # construct layers
-        in_dims = input_dims
-        self.layers = []
-        for _ in range(hidden_layers):
-            self.layers.append(nn.Linear(in_dims, hidden_dims))
-            self.layers.append(self.act_fn_layer(args))
-            in_dims = hidden_dims
-        self.model = nn.Sequential(*self.layers)
-        self.out = nn.Linear(in_dims, output_dims)
-
-        # activation for evaluation
-        self.act = nn.Softmax(dim=output_dims)
-
-    def act_fn_layer(self, args):
-        if args.activation_function_type == 'reltanh':
-            return ReLTanh(args.reltanh_alpha, args.reltanh_beta)
-        elif args.activation_function_type == 'relu':
-            return nn.ReLU()
-        elif args.activation_function_type == 'tanh':
-            return nn.Tanh()
-        else:
-            raise NotImplementedError(f'Did not implement activation function: {act_fn_name}')
-
-    def forward(self, x):
-        x = x.view(-1, 28 * 28)  # [bn, 28, 28] -> [bn, 768]
-        x = self.model(x)        # [bn, 768] -> [bn, 128]
-        x = self.out(x)          # [bn, 128] -> [bn, 10]
-        return x
-
-    def classify(self, x):
-        x = self(x)
-        x = self.act(x)
-        return torch.argmax(x, dim=1)
+from models import FCNN, CNN
 
 
 ## Training loop
@@ -265,6 +224,8 @@ if __name__ == '__main__':
                         help="training epochs")
     parser.add_argument('--log_dir', type=str, default='logs',
                         help="logging save directory")
+    parser.add_argument('--model', type=str, default='fcnn', choices=['fcnn', 'cnn'],
+                        help='type of model to use')
     parser.add_argument('--model_dir', type=str, default='models',
                         help="models save directory")
     parser.add_argument('--model_name', type=str, default=None,
@@ -277,7 +238,8 @@ if __name__ == '__main__':
 
     # set up model name
     if args.model_name == None:
-        args.model_name = (args.activation_function_type + '_' +
+        args.model_name = (args.model + '_' +
+                           args.activation_function_type + '_' +
                            str(args.hidden_layers) + 'l_' +
                            str(args.epochs) + 'e')
         if args.activation_function_type == "reltanh":
@@ -303,9 +265,15 @@ if __name__ == '__main__':
     transform = transforms.ToTensor()
 
     # create and train model
-    model = FCNN(args,
-                 hidden_dims=args.hidden_dims,
-                 hidden_layers=args.hidden_layers)
+    model = None
+    if args.model == 'fcnn':
+        model = FCNN(args,
+                     hidden_dims=args.hidden_dims,
+                     hidden_layers=args.hidden_layers)
+    elif args.model == 'cnn':
+        model = CNN(args)
+    else:
+        raise NotImplementedError(f"model {args.model} is not implemented")
     model, train_losses, train_accs, valid_losses, valid_accs = train(model, transform, device, args)
 
     # print training logs to file

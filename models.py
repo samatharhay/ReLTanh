@@ -68,7 +68,7 @@ class CNN(nn.Module):
 
         # hidden layers
         for _ in range(hidden_layers):
-            out_dims = hidden_layers
+            out_dims = hidden_dims
             self.layers.append(nn.Conv2d(in_dims, out_dims, kernel_size=3, padding=3//2))
             self.layers.append(self.act_fn_layer(args))
             in_dims = out_dims

@@ -271,7 +271,9 @@ if __name__ == '__main__':
                      hidden_dims=args.hidden_dims,
                      hidden_layers=args.hidden_layers)
     elif args.model == 'cnn':
-        model = CNN(args)
+        model = FCNN(args,
+                     hidden_dims=args.hidden_dims,
+                     hidden_layers=args.hidden_layers)
     else:
         raise NotImplementedError(f"model {args.model} is not implemented")
     model, train_losses, train_accs, valid_losses, valid_accs = train(model, transform, device, args)

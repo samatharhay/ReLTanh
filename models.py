@@ -5,12 +5,22 @@ from test_function import ReLTanh
 
 ## Define the NN architecture
 class FCNN(nn.Module):
-    def __init__(self, args, input_dims=3 *32 *32, output_dims=10,
+    def __init__(self, args, input_dims=28*28, output_dims=10,
                  hidden_dims=128, hidden_layers=5):
         super(FCNN, self).__init__()
+
+        # modify input dims based on dataset
         self.dataset = args.dataset
+        self.input_dims = input_dims
+        if self.dataset == "cifar10":
+            self.input_dims = 3*32*32
+        elif self.dataset == "mnist":
+            self.input_dims = 28*28
+        else:
+            raise NotImplementedError("Not implemented input_dims for dataset")
+
         # construct layers
-        in_dims = input_dims
+        in_dims = self.input_dims
         self.layers = []
         for _ in range(hidden_layers):
             self.layers.append(nn.Linear(in_dims, hidden_dims))
@@ -33,11 +43,8 @@ class FCNN(nn.Module):
             raise NotImplementedError(f'Did not implement activation function: {act_fn_name}')
 
     def forward(self, x):
-        if self.dataset == "cifar10":
-            x = x.view(-1, 3 * 32 * 32)  # [bn, 28, 28] -> [bn, 768]
-        elif self.dataset == "mnist":
-            x = x.view(-1, 28*28)
-        x = self.model(x)        # [bn, 768] -> [bn, 128]
+        x = x.view(-1, self.input_dims)  # [bn, *, ?] -> [bn, ?]
+        x = self.model(x)        # [bn, ?] -> [bn, 128]
         x = self.out(x)          # [bn, 128] -> [bn, 10]
         return x
 
@@ -53,12 +60,20 @@ class CNN(nn.Module):
                  hidden_dims=16, hidden_layers=5):
         super(CNN, self).__init__()
 
-        if hidden_layers <= 3:
-            raise NotImplementedError("CNN layers must be 4 or more")
+        if hidden_layers < 3:
+            raise NotImplementedError("CNN layers must be 3 or more")
         hidden_layers -= 3
 
         # construct layers
-        # if args.dataset == 'MNIST':
+        if args.dataset == 'mnist':
+            in_channels = 1
+            hidden_dims = 16
+        elif args.dataset == "cifar10":
+            in_channels = 3
+            hidden_dims = 32
+        else:
+            raise NotImplementedError("Not implemented dimensions for dataset")
+
         in_dims = in_channels
         self.layers = []
 

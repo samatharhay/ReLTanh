@@ -19,7 +19,7 @@ from models import FCNN, CNN
 ## Training loop
 def train(model, transform, device, args):
     # construct data
-    train_data = 0 
+    train_data = 0
     valid_data = 0
     if args.dataset == "cifar10":
         train_data = datasets.CIFAR10(root='data', train=True,
@@ -191,7 +191,7 @@ def evaluate_test(model, transform, device, args):
     print("----------- testing -----------")
 
     # prepare data
-    test_data = 0 
+    test_data = 0
     if args.dataset == "cifar10":
         test_data = datasets.CIFAR10(root='data', train=False,
                                           download=True, transform=transform)
@@ -230,7 +230,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--optimizer', type=str, default="sgd", choices=["sgd", "adam"],
                         help="optimizer for training")
     parser.add_argument('--dataset', type=str, default="mnist", choices=["cifar10", "mnist"],
-                        help="optimizer for training")
+                        help="dataset to test on")
     parser.add_argument('-lr', '--learning_rate', type=float, default=1e-3,
                         help="optimizer learning rate")
     parser.add_argument('--momentum', type=float, default=0.0,
@@ -282,22 +282,12 @@ if __name__ == '__main__':
 
     # create and train model
     model = None
-    in_dim = 0
-    channels = 0
-    if args.dataset == "cifar10":
-        in_dim = 3*32*32
-        channels = 3
-    if args.dataset == "mnist":
-        in_dim = 28*28
-        channels = 1
     if args.model == 'fcnn':
         model = FCNN(args,
-                     input_dims=in_dim,
                      hidden_dims=args.hidden_dims,
                      hidden_layers=args.hidden_layers)
     elif args.model == 'cnn':
         model = CNN(args,
-                     in_channels=channels,
                      hidden_dims=args.hidden_dims,
                      hidden_layers=args.hidden_layers)
     else:

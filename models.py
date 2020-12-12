@@ -5,10 +5,10 @@ from test_function import ReLTanh
 
 ## Define the NN architecture
 class FCNN(nn.Module):
-    def __init__(self, args, input_dims=28*28, output_dims=10,
+    def __init__(self, args, input_dims=3 *32 *32, output_dims=10,
                  hidden_dims=128, hidden_layers=5):
         super(FCNN, self).__init__()
-
+        self.dataset = args.dataset
         # construct layers
         in_dims = input_dims
         self.layers = []
@@ -33,7 +33,10 @@ class FCNN(nn.Module):
             raise NotImplementedError(f'Did not implement activation function: {act_fn_name}')
 
     def forward(self, x):
-        x = x.view(-1, 28 * 28)  # [bn, 28, 28] -> [bn, 768]
+        if self.dataset == "cifar10":
+            x = x.view(-1, 3 * 32 * 32)  # [bn, 28, 28] -> [bn, 768]
+        elif self.dataset == "mnist":
+            x = x.view(-1, 28*28)
         x = self.model(x)        # [bn, 768] -> [bn, 128]
         x = self.out(x)          # [bn, 128] -> [bn, 10]
         return x

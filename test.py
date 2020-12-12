@@ -19,10 +19,18 @@ from models import FCNN, CNN
 ## Training loop
 def train(model, transform, device, args):
     # construct data
-    train_data = datasets.MNIST(root='data', train=True,
-                                       download=True, transform=transform)
-    train_data, valid_data = torch.utils.data.random_split(train_data, [50000, 10000],
-        generator=torch.Generator().manual_seed(args.split_seed))
+    train_data = 0 
+    valid_data = 0
+    if args.dataset == "cifar10":
+        train_data = datasets.CIFAR10(root='data', train=True,
+                                           download=True, transform=transform)
+        train_data, valid_data = torch.utils.data.random_split(train_data, [40000, 10000],
+            generator=torch.Generator().manual_seed(args.split_seed))
+    elif args.dataset == "mnist":
+        train_data = datasets.MNIST(root='data', train=True,
+                                           download=True, transform=transform)
+        train_data, valid_data = torch.utils.data.random_split(train_data, [50000, 10000],
+            generator=torch.Generator().manual_seed(args.split_seed))
 
     # prepare data loaders
     train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size,
@@ -183,8 +191,13 @@ def evaluate_test(model, transform, device, args):
     print("----------- testing -----------")
 
     # prepare data
-    test_data = datasets.MNIST(root='data', train=False,
-                                      download=True, transform=transform)
+    test_data = 0 
+    if args.dataset == "cifar10":
+        test_data = datasets.CIFAR10(root='data', train=False,
+                                          download=True, transform=transform)
+    elif args.dataset == "mnist":
+        test_data = datasets.MNIST(root='data', train=False,
+                                          download=True, transform=transform)
     test_loader = torch.utils.data.DataLoader(test_data, batch_size=args.batch_size,
         num_workers=args.num_workers)
     print(f"There are {len(test_data)} examples in test set.")
@@ -216,6 +229,8 @@ if __name__ == '__main__':
                         help="dataloader batch size")
     parser.add_argument('-o', '--optimizer', type=str, default="sgd", choices=["sgd", "adam"],
                         help="optimizer for training")
+    parser.add_argument('--dataset', type=str, default="mnist", choices=["cifar10", "mnist"],
+                        help="optimizer for training")
     parser.add_argument('-lr', '--learning_rate', type=float, default=1e-3,
                         help="optimizer learning rate")
     parser.add_argument('--momentum', type=float, default=0.0,
@@ -239,6 +254,7 @@ if __name__ == '__main__':
     # set up model name
     if args.model_name == None:
         args.model_name = (args.model + '_' +
+                           args.dataset + '_' +
                            args.activation_function_type + '_' +
                            str(args.hidden_layers) + 'l_' +
                            str(args.epochs) + 'e')
@@ -266,12 +282,22 @@ if __name__ == '__main__':
 
     # create and train model
     model = None
+    in_dim = 0
+    channels = 0
+    if args.dataset == "cifar10":
+        in_dim = 3*32*32
+        channels = 3
+    if args.dataset == "mnist":
+        in_dim = 28*28
+        channels = 1
     if args.model == 'fcnn':
         model = FCNN(args,
+                     input_dims=in_dim,
                      hidden_dims=args.hidden_dims,
                      hidden_layers=args.hidden_layers)
     elif args.model == 'cnn':
-        model = FCNN(args,
+        model = CNN(args,
+                     in_channels=channels,
                      hidden_dims=args.hidden_dims,
                      hidden_layers=args.hidden_layers)
     else:

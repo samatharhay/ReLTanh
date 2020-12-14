@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from test_function import ReLTanh
+from ReLTanh import ReLTanh
 
 
 ## Define the NN architecture

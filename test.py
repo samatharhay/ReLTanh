@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.tensorboard as tb
+import torchvision.models as models
 import torchvision.transforms as transforms
 
 from torchvision import datasets
@@ -83,6 +84,7 @@ def train(model, transform, device, args):
     for epoch in range(n_epochs):
         # monitor training loss
         model.train() # prep model for training
+        first_layer_grad = 0.0
         train_loss = []
 
         ###################
@@ -103,6 +105,8 @@ def train(model, transform, device, args):
             optimizer.step()
             # update running training loss
             train_loss.append(loss.detach().cpu().numpy())
+            # get first layer's gradients
+            # first_layer_grad += model.get_first_layer_grad().cpu().numpy()
             # update tensorboard
             train_logger.add_scalar('loss_per_step', loss, global_step)
             global_step += 1
@@ -117,10 +121,14 @@ def train(model, transform, device, args):
             train_loss
             ))
 
+        if args.reltanh_learn:
+            print(model)
+
         # training evaluation
         _, acc, _ = evaluate(model, train_loader, device, "training")
         train_logger.add_scalar('loss', train_loss, epoch + 1)
         train_logger.add_scalar('accuracy', acc, epoch + 1)
+        # train_logger.add_scalar('first_layer_grad', first_layer_grad, epoch + 1)
         train_losses.append(train_loss)
         train_accs.append(acc)
 
@@ -219,6 +227,8 @@ if __name__ == '__main__':
                         help="positive boundary for reltanh")
     parser.add_argument('--reltanh_beta', type=float, default=-1.5,
                         help="negative boundary for reltanh")
+    parser.add_argument('--reltanh_learn', action="store_true",
+                        help="make boundaries of reltanh learnable")
     parser.add_argument('--split_seed', type=int, default=42,
                         help="rng seed for train and valid split")
     parser.add_argument('--init_seed', type=int, default=42,
@@ -239,8 +249,10 @@ if __name__ == '__main__':
                         help="training epochs")
     parser.add_argument('--log_dir', type=str, default='logs',
                         help="logging save directory")
-    parser.add_argument('--model', type=str, default='fcnn', choices=['fcnn', 'cnn'],
+    parser.add_argument('--model', type=str, default='fcnn', choices=['fcnn', 'cnn', 'resnet34', 'resnet50'],
                         help='type of model to use')
+    parser.add_argument('--pretrained', action='store_true',
+                        help='use pretrained models (e.g. resnet34, resnet50)')
     parser.add_argument('--model_dir', type=str, default='models',
                         help="models save directory")
     parser.add_argument('--model_name', type=str, default=None,
@@ -254,13 +266,15 @@ if __name__ == '__main__':
     # set up model name
     if args.model_name == None:
         args.model_name = (args.model + '_' +
+                           ('pretrained_' if (args.pretrained and (args.model == 'resnet34' or args.model == 'resnet50')) else '') +
                            args.dataset + '_' +
                            args.activation_function_type + '_' +
                            str(args.hidden_layers) + 'l_' +
                            str(args.epochs) + 'e')
         if args.activation_function_type == "reltanh":
             args.model_name += ('_a_' + str(args.reltanh_alpha) +
-                                '_b_' + str(args.reltanh_beta))
+                                '_b_' + str(args.reltanh_beta) +
+                                '_learn' if args.reltanh_learn else '')
 
     # seed for consistency in model weights
     torch.manual_seed(args.init_seed)
@@ -290,6 +304,26 @@ if __name__ == '__main__':
         model = CNN(args,
                      hidden_dims=args.hidden_dims,
                      hidden_layers=args.hidden_layers)
+    elif args.model == 'resnet34':
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+        ])
+        model = models.resnet34(pretrained=args.pretrained, progress=True)
+        model.fc = nn.Linear(512, 10)
+    elif args.model == 'resnet50':
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+        ])
+        model = models.resnet50(pretrained=args.pretrained, progress=True)
+        model.fc = nn.Linear(2048, 10)
     else:
         raise NotImplementedError(f"model {args.model} is not implemented")
     model, train_losses, train_accs, valid_losses, valid_accs = train(model, transform, device, args)

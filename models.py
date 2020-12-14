@@ -34,7 +34,7 @@ class FCNN(nn.Module):
 
     def act_fn_layer(self, args):
         if args.activation_function_type == 'reltanh':
-            return ReLTanh(args.reltanh_alpha, args.reltanh_beta)
+            return ReLTanh(args.reltanh_alpha, args.reltanh_beta, args.reltanh_learn)
         elif args.activation_function_type == 'relu':
             return nn.ReLU()
         elif args.activation_function_type == 'tanh':
@@ -101,13 +101,16 @@ class CNN(nn.Module):
 
     def act_fn_layer(self, args):
         if args.activation_function_type == 'reltanh':
-            return ReLTanh(args.reltanh_alpha, args.reltanh_beta)
+            return ReLTanh(args.reltanh_alpha, args.reltanh_beta, args.reltanh_learn)
         elif args.activation_function_type == 'relu':
             return nn.ReLU()
         elif args.activation_function_type == 'tanh':
             return nn.Tanh()
         else:
             raise NotImplementedError(f'Did not implement activation function: {act_fn_name}')
+
+    def get_first_layer_grad(self):
+        return self.layers[0].weight.grad.sum()
 
     def forward(self, x):
         x = self.model(x)

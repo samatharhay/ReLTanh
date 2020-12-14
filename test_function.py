@@ -32,7 +32,7 @@ class ReLTanh(nn.Module):
         >>> x = torch.randn(256)
         >>> x = a1(x)
     '''
-    def __init__(self, alpha=0.0, beta=-1.5):
+    def __init__(self, alpha=0.0, beta=-1.5, learnable=False):
         super(ReLTanh, self).__init__()
 
         assert alpha > beta
@@ -42,13 +42,15 @@ class ReLTanh(nn.Module):
         self.alpha_t = torch.FloatTensor([self.alpha])
         self.beta_t = torch.FloatTensor([self.beta])
 
-        # Set up constant boundary values
-        self.alpha_tanh = torch.tanh(self.alpha_t)
-        self.beta_tanh = torch.tanh(self.beta_t)
-        self.alpha_tanh_d1 = torch.ones([1]).sub(torch.square(self.alpha_tanh))
-        self.beta_tanh_d1 = torch.ones([1]).sub(torch.square(self.beta_tanh))
+        self.learnable = learnable
+
+        if self.learnable:
+            self.alpha_t = Parameter(self.alpha_t, requires_grad=True)
+            self.beta_t = Parameter(self.beta_t, requires_grad=True)
 
     def __repr__(self):
+        if self.learnable:
+            return f"ReLTanh(alpha={self.alpha_t.data.item()}, beta={self.beta_t.data.item()}, learnable={self.learnable})"
         return f"ReLTanh(alpha={self.alpha}, beta={self.beta})"
 
     def forward(self, x):
@@ -60,8 +62,13 @@ class ReLTanh(nn.Module):
         device = x.device
         self.alpha_t = self.alpha_t.to(device)
         self.beta_t = self.beta_t.to(device)
-        self.alpha_tanh_d1 = self.alpha_tanh_d1.to(device)
-        self.beta_tanh_d1 = self.beta_tanh_d1.to(device)
+
+        # Set up boundary values
+        alpha_tanh = torch.tanh(self.alpha_t)
+        beta_tanh = torch.tanh(self.beta_t)
+        one = torch.ones([1]).to(device)
+        alpha_tanh_d1 = one.sub(torch.square(alpha_tanh))
+        beta_tanh_d1 = one.sub(torch.square(beta_tanh))
 
         # compute masks to relax indifferentiability
         alpha_mask = x.ge(self.alpha_t)
@@ -69,8 +76,8 @@ class ReLTanh(nn.Module):
         act_mask = ~(alpha_mask | beta_mask)
 
         # activations
-        x_alpha = x.sub(self.alpha_t).mul(self.alpha_tanh_d1).add(self.alpha_t)
-        x_beta = x.sub(self.beta_t).mul(self.beta_tanh_d1).add(self.beta_t)
+        x_alpha = x.sub(self.alpha_t).mul(alpha_tanh_d1).add(self.alpha_t)
+        x_beta = x.sub(self.beta_t).mul(beta_tanh_d1).add(self.beta_t)
         x_act = torch.tanh(x)
 
         # combine activations

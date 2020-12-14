@@ -10,7 +10,7 @@ set -ex
 # - use GPU
 # - run on test set
 
-python3 -u test.py \
+python3 -u driver.py \
     \
     --split_seed 42 \
     --init_seed 42 \
